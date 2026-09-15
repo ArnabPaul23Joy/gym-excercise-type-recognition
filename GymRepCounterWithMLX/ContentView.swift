@@ -15,11 +15,6 @@ struct ContentView: View {
                     videoPickerCard
                     if videoURL != nil {
                         exerciseTypeCard
-                    }
-                    if !viewModel.frameThumbnails.isEmpty {
-                        framesStripCard
-                    }
-                    if videoURL != nil {
                         analyzeButton
                     }
                     analysisResultCard
@@ -35,13 +30,9 @@ struct ContentView: View {
                 guard let vid = try? await newItem.loadTransferable(type: VideoFile.self) else { return }
                 videoURL = vid.url
                 player = AVPlayer(url: vid.url)
-                // Don't stomp state that an in-flight analysis is still updating.
-                if !viewModel.isAnalyzing {
-                    viewModel.analysisState = .idle
-                    viewModel.frameThumbnails = []
-                }
-                // Upload finished — start recognising the exercise type right away.
-                await viewModel.classifyExercise(url: vid.url)
+                viewModel.analysisState = .idle
+                // Upload finished — track body points and recognise the exercise right away.
+                await viewModel.analyzeUpload(url: vid.url)
             }
         }
     }
@@ -51,9 +42,26 @@ struct ContentView: View {
     private var videoPickerCard: some View {
         VStack(spacing: 12) {
             if let player {
-                VideoPlayer(player: player)
-                    .frame(height: 200)
+                PoseVideoView(player: player, poses: viewModel.poseFrames)
+                    .frame(height: 260)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(alignment: .bottomLeading) {
+                        if viewModel.isClassifyingExercise {
+                            Label("Tracking body points…", systemImage: "figure.walk.motion")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(.black.opacity(0.55), in: Capsule())
+                                .foregroundStyle(.white)
+                                .padding(8)
+                        } else if !viewModel.poseFrames.isEmpty {
+                            Label("Body-point tracking", systemImage: "figure.walk.motion")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 8).padding(.vertical, 4)
+                                .background(.black.opacity(0.55), in: Capsule())
+                                .foregroundStyle(.white)
+                                .padding(8)
+                        }
+                    }
             } else {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(.quaternary)
@@ -123,53 +131,15 @@ struct ContentView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
     }
 
-    // MARK: - Frames Strip Card
-
-    private var framesStripCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Sample Frames — \(viewModel.frameThumbnails.count) of \(VideoFrameExtractor.frameCount) shown")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(Array(viewModel.frameThumbnails.enumerated()), id: \.offset) { i, img in
-                        Image(uiImage: img)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 70, height: 70)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .overlay(alignment: .topLeading) {
-                                Text("\(i + 1)")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 4)
-                                    .padding(.vertical, 2)
-                                    .background(.black.opacity(0.55), in: RoundedRectangle(cornerRadius: 4))
-                                    .padding(4)
-                            }
-                    }
-                }
-            }
-        }
-        .padding()
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-    }
-
     // MARK: - Analyze Button
 
     private var analyzeButton: some View {
         Button {
-            guard let url = videoURL else { return }
-            Task { await viewModel.analyzeVideo(url: url) }
+            viewModel.countReps()
         } label: {
             HStack(spacing: 8) {
-                if viewModel.isAnalyzing {
-                    ProgressView().controlSize(.small).tint(.white)
-                } else {
-                    Image(systemName: "figure.strengthtraining.traditional")
-                }
-                Text(analyzeTitle)
+                Image(systemName: "figure.strengthtraining.traditional")
+                Text("Count Reps")
                     .fontWeight(.semibold)
             }
             .frame(maxWidth: .infinity)
@@ -177,7 +147,7 @@ struct ContentView: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(!viewModel.canAnalyze)
-        .animation(.default, value: viewModel.isAnalyzing)
+        .animation(.default, value: viewModel.canAnalyze)
     }
 
     // MARK: - Result Card
@@ -195,7 +165,7 @@ struct ContentView: View {
                 Text(count == 1 ? "repetition" : "repetitions")
                     .font(.title2)
                     .foregroundStyle(.secondary)
-                Text("counted by RepNet")
+                Text("counted from body-pose geometry")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -217,10 +187,8 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
 
-        case .extractingFrames:
-            progressRow(label: "Extracting 64 frames…", icon: "film")
-        case .runningModel:
-            progressRow(label: "RepNet is counting reps…", icon: "brain")
+        case .counting:
+            progressRow(label: "Counting reps from body points…", icon: "function")
 
         default:
             EmptyView()
@@ -236,16 +204,6 @@ struct ContentView: View {
         }
         .padding()
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
-    }
-
-    // MARK: - Helpers
-
-    private var analyzeTitle: String {
-        switch viewModel.analysisState {
-        case .extractingFrames:     return "Extracting Frames…"
-        case .runningModel:         return "Counting Reps…"
-        default:                    return "Count Reps"
-        }
     }
 }
 

@@ -1,17 +1,26 @@
 // ExerciseTypeAnalyzer.swift
-// Runs the ExerciseClassifierKit pipeline over a whole video to recognise the
-// exercise type (pull-up, push-up, squat).
+// One pass over a video that (1) recognises the exercise type with the on-device
+// Bi-LSTM Core ML model and (2) collects per-frame body-pose keypoints used for the
+// skeleton overlay and the geometric rep counter.
 //
-// Per frame: AVAssetReader → VNDetectHumanBodyPoseRequest → PoseFeatures →
-// WindowResampler; every `stride` seconds the last window is classified with the
-// on-device Bi-LSTM Core ML model. Predictions are aggregated by majority vote,
-// and the winning class's mean probability is reported as confidence.
-// This mirrors the reference CLI in swift/main.swift.
+// Per frame: AVAssetReader → VNDetectHumanBodyPoseRequest → { PoseFeatures for the
+// classifier, raw normalised joints for PoseFrame }. Classification aggregates window
+// predictions by majority vote.
 
 import AVFoundation
+import CoreGraphics
 import CoreML
 import Foundation
+import ImageIO
 import Vision
+
+/// One frame of tracked body-pose keypoints.
+/// `joints` are normalised to [0, 1] in the *upright/displayed* image space with a
+/// top-left origin (y grows downward) — ready to map onto an AVPlayerLayer's videoRect.
+struct PoseFrame: Sendable {
+    let time: Double
+    let joints: [String: CGPoint]
+}
 
 nonisolated enum ExerciseTypeAnalyzer {
 
@@ -19,6 +28,13 @@ nonisolated enum ExerciseTypeAnalyzer {
         let label: String        // display name, e.g. "Squat"
         let rawLabel: String     // model class, e.g. "squat"
         let confidence: Double   // mean probability of the winning class, 0…1
+    }
+
+    /// Everything a single analysis pass produces.
+    struct Analysis: Sendable {
+        let type: Result?            // nil if no pose was seen clearly enough to classify
+        let poses: [PoseFrame]       // per-frame keypoints for overlay + rep counting
+        let orientedSize: CGSize     // displayed (upright) pixel size of the video
     }
 
     enum AnalyzerError: LocalizedError {
@@ -49,9 +65,9 @@ nonisolated enum ExerciseTypeAnalyzer {
     }
 
     /// - Parameters:
-    ///   - stride: seconds between predictions once the buffer is full.
+    ///   - stride: seconds between classifier predictions once the buffer is full.
     ///   - minCoverage: skip windows whose fraction of valid (unmasked) features is below this.
-    static func classify(url: URL, stride: Double = 0.25, minCoverage: Double = 0.5) async throws -> Result {
+    static func analyze(url: URL, stride: Double = 0.25, minCoverage: Double = 0.5) async throws -> Analysis {
         guard let modelURL = Bundle.main.url(forResource: "ExerciseClassifier", withExtension: "mlmodelc") else {
             throw AnalyzerError.modelNotFound
         }
@@ -62,7 +78,11 @@ nonisolated enum ExerciseTypeAnalyzer {
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
             throw AnalyzerError.noVideoTrack
         }
-        let size = try await track.load(.naturalSize)
+        let naturalSize = try await track.load(.naturalSize)
+        let transform = try await track.load(.preferredTransform)
+        let orientation = cgOrientation(from: transform)
+        let rotated = (orientation == .left || orientation == .right)
+        let orientedSize = rotated ? CGSize(width: naturalSize.height, height: naturalSize.width) : naturalSize
 
         let reader = try AVAssetReader(asset: asset)
         let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
@@ -72,6 +92,7 @@ nonisolated enum ExerciseTypeAnalyzer {
         reader.add(output)
         guard reader.startReading() else { throw reader.error ?? AnalyzerError.noPoseDetected }
 
+        var poses: [PoseFrame] = []
         var votes: [String: Int] = [:]
         var probabilitySum = Array(repeating: 0.0, count: classifier.classes.count)
         var predictions = 0
@@ -85,15 +106,21 @@ nonisolated enum ExerciseTypeAnalyzer {
                 nextPrediction = timestamp + classifier.windowSeconds
             }
 
-            // per frame: pose → features → ring buffer
+            // Pose detection, using the track's display orientation so keypoints are upright.
             let request = VNDetectHumanBodyPoseRequest()
-            try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up).perform([request])
+            try? VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation).perform([request])
             let observation = request.results?.first
-            let features = PoseFeatures.features(from: observation, imageWidth: Double(size.width),
-                                                 imageHeight: Double(size.height), timestamp: timestamp)
+
+            if let observation {
+                let joints = normalisedJoints(from: observation)
+                if !joints.isEmpty { poses.append(PoseFrame(time: timestamp, joints: joints)) }
+            }
+
+            // Feed the classifier's feature pipeline (23 angles/distances, oriented pixel space).
+            let features = PoseFeatures.features(from: observation, imageWidth: Double(orientedSize.width),
+                                                 imageHeight: Double(orientedSize.height), timestamp: timestamp)
             resampler.push(features)
 
-            // every `stride` seconds: resample the last window and classify
             guard timestamp >= nextPrediction, resampler.isReady() else { continue }
             nextPrediction += stride
             guard let window = resampler.window(), window.coverage >= minCoverage else { continue }
@@ -104,11 +131,37 @@ nonisolated enum ExerciseTypeAnalyzer {
             for (i, p) in prediction.probabilities.enumerated() { probabilitySum[i] += p }
         }
 
-        guard predictions > 0, let winner = votes.max(by: { $0.value < $1.value })?.key else {
-            throw AnalyzerError.noPoseDetected
+        var type: Result?
+        if predictions > 0, let winner = votes.max(by: { $0.value < $1.value })?.key {
+            let index = classifier.classes.firstIndex(of: winner) ?? 0
+            type = Result(label: displayName(for: winner), rawLabel: winner,
+                          confidence: probabilitySum[index] / Double(predictions))
         }
-        let index = classifier.classes.firstIndex(of: winner) ?? 0
-        let confidence = probabilitySum[index] / Double(predictions)
-        return Result(label: displayName(for: winner), rawLabel: winner, confidence: confidence)
+
+        return Analysis(type: type, poses: poses, orientedSize: orientedSize)
+    }
+
+    // MARK: - Helpers
+
+    /// Normalised joint locations in upright space, top-left origin (y down).
+    private static func normalisedJoints(from observation: VNHumanBodyPoseObservation) -> [String: CGPoint] {
+        guard let points = try? observation.recognizedPoints(.all) else { return [:] }
+        var result: [String: CGPoint] = [:]
+        for joint in PoseFeatures.joints {
+            guard let point = points[joint.vision], point.confidence > 0.1 else { continue }
+            result[joint.name] = CGPoint(x: point.location.x, y: 1 - point.location.y)
+        }
+        return result
+    }
+
+    /// Maps a track's preferred transform to the CGImagePropertyOrientation Vision needs
+    /// so keypoints come out in the same upright space the player displays.
+    private static func cgOrientation(from t: CGAffineTransform) -> CGImagePropertyOrientation {
+        switch (t.a, t.b, t.c, t.d) {
+        case (0, 1, -1, 0):   return .right   // portrait
+        case (0, -1, 1, 0):   return .left    // portrait upside-down
+        case (-1, 0, 0, -1):  return .down    // landscape (home button left)
+        default:              return .up       // identity / landscape
+        }
     }
 }
