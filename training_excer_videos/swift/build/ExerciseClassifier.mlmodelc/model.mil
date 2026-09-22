@@ -1,0 +1,39 @@
+program(1.0)
+[buildInfo = dict<tensor<string, []>, tensor<string, []>>({{"coremlc-component-MIL", "3520.4.1"}, {"coremlc-version", "3520.5.1"}, {"coremltools-component-torch", "2.14.0"}, {"coremltools-source-dialect", "TorchScript"}, {"coremltools-version", "9.0"}})]
+{
+    func main<ios16>(tensor<fp32, [1, 30, 46]> features) {
+            tensor<int32, [3]> features_batch_first_transpose_perm_0 = const()[name = tensor<string, []>("features_batch_first_transpose_perm_0"), val = tensor<int32, [3]>([1, 0, 2])];
+            tensor<string, []> features_to_fp16_dtype_0 = const()[name = tensor<string, []>("features_to_fp16_dtype_0"), val = tensor<string, []>("fp16")];
+            tensor<string, []> features_batch_first_transpose_cast_fp16_to_fp32_dtype_0 = const()[name = tensor<string, []>("features_batch_first_transpose_cast_fp16_to_fp32_dtype_0"), val = tensor<string, []>("fp32")];
+            tensor<fp32, [256]> add_0 = const()[name = tensor<string, []>("add_0"), val = tensor<fp32, [256]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(64)))];
+            tensor<fp32, [256]> add_1 = const()[name = tensor<string, []>("add_1"), val = tensor<fp32, [256]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(1152)))];
+            tensor<fp32, [256, 46]> concat_4 = const()[name = tensor<string, []>("concat_4"), val = tensor<fp32, [256, 46]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(2240)))];
+            tensor<fp32, [256, 64]> concat_5 = const()[name = tensor<string, []>("concat_5"), val = tensor<fp32, [256, 64]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(49408)))];
+            tensor<fp32, [256, 46]> concat_6 = const()[name = tensor<string, []>("concat_6"), val = tensor<fp32, [256, 46]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(115008)))];
+            tensor<fp32, [256, 64]> concat_7 = const()[name = tensor<string, []>("concat_7"), val = tensor<fp32, [256, 64]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(162176)))];
+            tensor<fp32, [1, 128]> out_batch_first_lstm_h0_reshaped = const()[name = tensor<string, []>("out_batch_first_lstm_h0_reshaped"), val = tensor<fp32, [1, 128]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(227776)))];
+            tensor<string, []> out_batch_first_direction_0 = const()[name = tensor<string, []>("out_batch_first_direction_0"), val = tensor<string, []>("bidirectional")];
+            tensor<bool, []> out_batch_first_output_sequence_0 = const()[name = tensor<string, []>("out_batch_first_output_sequence_0"), val = tensor<bool, []>(true)];
+            tensor<string, []> out_batch_first_recurrent_activation_0 = const()[name = tensor<string, []>("out_batch_first_recurrent_activation_0"), val = tensor<string, []>("sigmoid")];
+            tensor<string, []> out_batch_first_cell_activation_0 = const()[name = tensor<string, []>("out_batch_first_cell_activation_0"), val = tensor<string, []>("tanh")];
+            tensor<string, []> out_batch_first_activation_0 = const()[name = tensor<string, []>("out_batch_first_activation_0"), val = tensor<string, []>("tanh")];
+            tensor<fp16, [1, 30, 46]> features_to_fp16 = cast(dtype = features_to_fp16_dtype_0, x = features)[name = tensor<string, []>("cast_3")];
+            tensor<fp16, [30, 1, 46]> features_batch_first_transpose_cast_fp16 = transpose(perm = features_batch_first_transpose_perm_0, x = features_to_fp16)[name = tensor<string, []>("transpose_1")];
+            tensor<fp32, [30, 1, 46]> features_batch_first_transpose_cast_fp16_to_fp32 = cast(dtype = features_batch_first_transpose_cast_fp16_to_fp32_dtype_0, x = features_batch_first_transpose_cast_fp16)[name = tensor<string, []>("cast_2")];
+            tensor<fp32, [30, 1, 128]> out_batch_first_0, tensor<fp32, [1, 128]> out_batch_first_1, tensor<fp32, [1, 128]> out_batch_first_2 = lstm(activation = out_batch_first_activation_0, bias = add_0, bias_back = add_1, cell_activation = out_batch_first_cell_activation_0, direction = out_batch_first_direction_0, initial_c = out_batch_first_lstm_h0_reshaped, initial_h = out_batch_first_lstm_h0_reshaped, output_sequence = out_batch_first_output_sequence_0, recurrent_activation = out_batch_first_recurrent_activation_0, weight_hh = concat_5, weight_hh_back = concat_7, weight_ih = concat_4, weight_ih_back = concat_6, x = features_batch_first_transpose_cast_fp16_to_fp32)[name = tensor<string, []>("out_batch_first")];
+            tensor<int32, [3]> out_perm_0 = const()[name = tensor<string, []>("out_perm_0"), val = tensor<int32, [3]>([1, 0, 2])];
+            tensor<string, []> out_batch_first_0_to_fp16_dtype_0 = const()[name = tensor<string, []>("out_batch_first_0_to_fp16_dtype_0"), val = tensor<string, []>("fp16")];
+            tensor<int32, [1]> input_1_axes_0 = const()[name = tensor<string, []>("input_1_axes_0"), val = tensor<int32, [1]>([1])];
+            tensor<bool, []> input_1_keep_dims_0 = const()[name = tensor<string, []>("input_1_keep_dims_0"), val = tensor<bool, []>(false)];
+            tensor<fp16, [30, 1, 128]> out_batch_first_0_to_fp16 = cast(dtype = out_batch_first_0_to_fp16_dtype_0, x = out_batch_first_0)[name = tensor<string, []>("cast_1")];
+            tensor<fp16, [1, 30, 128]> out_cast_fp16 = transpose(perm = out_perm_0, x = out_batch_first_0_to_fp16)[name = tensor<string, []>("transpose_0")];
+            tensor<fp16, [1, 128]> input_1_cast_fp16 = reduce_mean(axes = input_1_axes_0, keep_dims = input_1_keep_dims_0, x = out_cast_fp16)[name = tensor<string, []>("input_1_cast_fp16")];
+            tensor<fp16, [3, 128]> classifier_head_1_weight_to_fp16 = const()[name = tensor<string, []>("classifier_head_1_weight_to_fp16"), val = tensor<fp16, [3, 128]>(BLOBFILE(path = tensor<string, []>("@model_path/weights/weight.bin"), offset = tensor<uint64, []>(228352)))];
+            tensor<fp16, [3]> classifier_head_1_bias_to_fp16 = const()[name = tensor<string, []>("classifier_head_1_bias_to_fp16"), val = tensor<fp16, [3]>([-0x1.01cp-3, 0x1.61p-5, 0x1.974p-5])];
+            tensor<fp16, [1, 3]> linear_0_cast_fp16 = linear(bias = classifier_head_1_bias_to_fp16, weight = classifier_head_1_weight_to_fp16, x = input_1_cast_fp16)[name = tensor<string, []>("linear_0_cast_fp16")];
+            tensor<int32, []> var_41 = const()[name = tensor<string, []>("op_41"), val = tensor<int32, []>(1)];
+            tensor<fp16, [1, 3]> var_43_cast_fp16 = softmax(axis = var_41, x = linear_0_cast_fp16)[name = tensor<string, []>("op_43_cast_fp16")];
+            tensor<string, []> var_43_cast_fp16_to_fp32_dtype_0 = const()[name = tensor<string, []>("op_43_cast_fp16_to_fp32_dtype_0"), val = tensor<string, []>("fp32")];
+            tensor<fp32, [1, 3]> probabilities = cast(dtype = var_43_cast_fp16_to_fp32_dtype_0, x = var_43_cast_fp16)[name = tensor<string, []>("cast_0")];
+        } -> (probabilities);
+}

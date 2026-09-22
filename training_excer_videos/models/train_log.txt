@@ -1,0 +1,35 @@
+loaded 111 clips, 25138 frames, 23 features
+classes: ['pullup', 'pushup', 'squat']   clips per class: {np.str_('pullup'): np.int64(26), np.str_('pushup'): np.int64(56), np.str_('squat'): np.int64(29)}
+fold 1: window acc 0.866 (558 windows)   clip acc 0.905 (21 clips)   [42 s]
+fold 2: window acc 0.937 (380 windows)   clip acc 1.000 (18 clips)   [41 s]
+fold 3: window acc 0.952 (396 windows)   clip acc 0.941 (17 clips)   [41 s]
+fold 4: window acc 0.882 (356 windows)   clip acc 1.000 (17 clips)   [41 s]
+fold 5: window acc 0.987 (450 windows)   clip acc 1.000 (17 clips)   [42 s]
+
+5-fold CV: window acc 0.925 +- 0.045   clip acc 0.969 +- 0.039   [209 s total]
+          pullup  pushup   squat   (rows = true, cols = predicted)
+  pullup     472       0       3
+  pushup       0     715      32
+   squat      69      62     787
+
+clips with < 90% of windows voting for the true class (feature coverage = fraction of valid inputs):
+  weak   squat_27     true=squat   pred=squat   vote=0.52 coverage=0.57
+  weak   squat_26     true=squat   pred=squat   vote=0.54 coverage=1.00
+  weak   pushup_23    true=pushup  pred=pushup  vote=0.60 coverage=0.61
+  weak   pushup_21    true=pushup  pred=pushup  vote=0.67 coverage=0.91
+  weak   pullup_26    true=pullup  pred=pullup  vote=0.75 coverage=0.89
+  weak   squat_9      true=squat   pred=squat   vote=0.75 coverage=0.69
+  weak   squat_6      true=squat   pred=squat   vote=0.75 coverage=0.99
+  WRONG  squat_25     true=squat   pred=pushup  vote=0.76 coverage=0.92
+  weak   pushup_55    true=pushup  pred=pushup  vote=0.76 coverage=0.87
+  weak   squat_17     true=squat   pred=squat   vote=0.80 coverage=0.96
+  weak   pushup_51    true=pushup  pred=pushup  vote=0.80 coverage=0.92
+  weak   pullup_8     true=pullup  pred=pullup  vote=0.82 coverage=0.95
+  WRONG  pushup_19    true=pushup  pred=squat   vote=0.83 coverage=1.00
+  weak   squat_5      true=squat   pred=squat   vote=0.85 coverage=0.78
+  weak   squat_3      true=squat   pred=squat   vote=0.90 coverage=0.94
+  WRONG  pushup_18    true=pushup  pred=squat   vote=1.00 coverage=0.51
+
+training final model on all clips
+final training took 52 s
+saved /Users/arnab/Documents/KSU courses/Adv. Research/training_excer_videos/models/bilstm_exercise.pt (57731 parameters, 226 KB fp32) and bilstm_exercise.json
