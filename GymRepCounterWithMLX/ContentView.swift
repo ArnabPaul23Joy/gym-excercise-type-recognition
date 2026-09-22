@@ -7,11 +7,13 @@ struct ContentView: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var videoURL: URL?
     @State private var player: AVPlayer?
+    @State private var showLiveCamera = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    liveCameraButton
                     videoPickerCard
                     if videoURL != nil {
                         exerciseTypeCard
@@ -24,6 +26,9 @@ struct ContentView: View {
             .navigationTitle("Gym Rep Counter")
             .navigationBarTitleDisplayMode(.inline)
         }
+        .fullScreenCover(isPresented: $showLiveCamera) {
+            LiveWorkoutView()
+        }
         .onChange(of: pickerItem) { _, newItem in
             guard let newItem else { return }
             Task {
@@ -35,6 +40,33 @@ struct ContentView: View {
                 await viewModel.analyzeUpload(url: vid.url)
             }
         }
+    }
+
+    // MARK: - Live Camera Button
+
+    private var liveCameraButton: some View {
+        Button {
+            showLiveCamera = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "camera.viewfinder")
+                    .font(.title3)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Live Camera")
+                        .fontWeight(.semibold)
+                    Text("Count reps in real time")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Video Picker Card
